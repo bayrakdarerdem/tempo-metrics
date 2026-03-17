@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Tempo Metrics — Network Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #080808;
+    --surface: #111111;
+    --surface2: #1a1a1a;
+    --border: #222222;
+    --border2: #2e2e2e;
+    --text: #f0f0f0;
+    --muted: #555555;
+    --accent: #00e5a0;
+    --accent2: #00b87a;
+    --accent-dim: rgba(0,229,160,0.07);
+    --accent-glow: rgba(0,229,160,0.12);
+    --yellow: #ffd166;
+    --red: #ff4d4d;
+    --blue: #4d9fff;
+    --purple: #a78bfa;
+    --mono: 'DM Mono', monospace;
+    --sans: 'Syne', sans-serif;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 1000; opacity: 0.35;
+  }
+
+  /* ── NAV ── */
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 40px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(8,8,8,0.94);
+    backdrop-filter: blur(16px);
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 17px; font-weight: 800; letter-spacing: -0.5px;
+    text-decoration: none; color: var(--text);
+  }
+
+  .logo-mark {
+    width: 26px; height: 26px;
+    background: var(--accent); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; color: #000;
+  }
+
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+
+  .status-pill {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 11px;
+    background: var(--surface); border: 1px solid var(--border2);
+    padding: 5px 12px; border-radius: 20px; color: var(--muted);
+  }
+
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+
+  .status-dot.live { background: var(--accent); animation: pulse 2s infinite; }
+  .status-dot.error { background: var(--red); }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .last-update {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+  }
+
+  /* ── HERO ── */
+  .hero {
+    padding: 48px 40px 32px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hero-eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--accent);
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .hero-eyebrow::before { content:''; width:20px; height:1px; background:var(--accent); }
+
+  h1 {
+    font-size: clamp(28px, 4vw, 48px);
+    font-weight: 800; letter-spacing: -2px; line-height: 1.05;
+    margin-bottom: 8px;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .hero-sub {
+    color: var(--muted); font-size: 14px; font-weight: 400;
+    font-family: var(--mono);
+  }
+
+  /* ── GRID ── */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  @media(max-width:900px) { .metrics-grid { grid-template-columns: repeat(2,1fr); } }
+  @media(max-width:500px) { .metrics-grid { grid-template-columns: 1fr; } nav { padding: 16px 20px; } .hero { padding: 32px 20px 24px; } }
+
+  .metric-card {
+    padding: 28px 32px;
+    border-right: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+    transition: background 0.2s;
+  }
+
+  .metric-card:last-child { border-right: none; }
+  .metric-card:hover { background: var(--surface); }
+
+  .metric-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .metric-card:hover::before { opacity: 1; }
+  .metric-card.green::before { background: linear-gradient(90deg, transparent, var(--accent), transparent); }
+  .metric-card.yellow::before { background: linear-gradient(90deg, transparent, var(--yellow), transparent); }
+  .metric-card.blue::before { background: linear-gradient(90deg, transparent, var(--blue), transparent); }
+  .metric-card.purple::before { background: linear-gradient(90deg, transparent, var(--purple), transparent); }
+
+  .metric-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .metric-icon { font-size: 14px; }
+
+  .metric-value {
+    font-size: 36px; font-weight: 800; letter-spacing: -2px;
+    line-height: 1; margin-bottom: 6px;
+    transition: all 0.3s;
+  }
+
+  .metric-value.loading {
+    background: var(--surface2);
+    border-radius: 4px;
+    color: transparent;
+    animation: shimmer 1.5s infinite;
+    min-width: 120px; display: inline-block;
+  }
+
+  @keyframes shimmer {
+    0%,100% { opacity: 0.5; } 50% { opacity: 1; }
+  }
+
+  .metric-value.green { color: var(--accent); }
+  .metric-value.yellow { color: var(--yellow); }
+  .metric-value.blue { color: var(--blue); }
+  .metric-value.purple { color: var(--purple); }
+
+  .metric-sub {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+
+  /* ── MAIN CONTENT ── */
+  .content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    flex: 1;
+  }
+
+  @media(max-width:768px) { .content { grid-template-columns: 1fr; } }
+
+  .panel {
+    padding: 32px;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel:nth-child(2) { border-right: none; }
+  .panel:nth-child(3) { border-right: 1px solid var(--border); border-bottom: none; }
+  .panel:nth-child(4) { border-right: none; border-bottom: none; }
+
+  .panel-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 24px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .panel-title::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  /* ── BLOCKS TABLE ── */
+  .block-list { display: flex; flex-direction: column; gap: 0; }
+
+  .block-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .block-row:last-child { border-bottom: none; }
+
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+
+  .block-num {
+    font-family: var(--mono); font-weight: 500;
+    color: var(--accent); font-size: 12px;
+  }
+
+  .block-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: right; }
+  .block-meta span { display: block; }
+
+  .block-txs {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--surface2); border: 1px solid var(--border2);
+    padding: 3px 8px; border-radius: 4px; color: var(--text);
+  }
+
+  /* ── TX LIST ── */
+  .tx-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .tx-row:last-child { border-bottom: none; }
+
+  .tx-hash {
+    font-family: var(--mono); color: var(--accent); font-size: 11px;
+  }
+
+  .tx-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: right; }
+
+  .tx-type {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    padding: 2px 7px; border-radius: 4px; letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .tx-type.transfer { background: rgba(0,229,160,0.1); color: var(--accent); border: 1px solid rgba(0,229,160,0.2); }
+  .tx-type.contract { background: rgba(77,159,255,0.1); color: var(--blue); border: 1px solid rgba(77,159,255,0.2); }
+  .tx-type.other { background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); }
+
+  /* ── CHART ── */
+  .chart-wrap {
+    height: 120px; position: relative;
+    display: flex; align-items: flex-end; gap: 3px;
+    margin-top: 8px;
+  }
+
+  .bar {
+    flex: 1; border-radius: 3px 3px 0 0;
+    background: var(--accent-dim);
+    border: 1px solid rgba(0,229,160,0.15);
+    transition: height 0.5s ease, background 0.2s;
+    position: relative; cursor: pointer; min-height: 4px;
+  }
+
+  .bar:hover { background: var(--accent-glow); }
+  .bar.active { background: rgba(0,229,160,0.3); border-color: var(--accent); }
+
+  .chart-labels {
+    display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 9px; color: var(--muted);
+    margin-top: 6px;
+  }
+
+  /* ── NETWORK INFO ── */
+  .info-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .info-row:last-child { border-bottom: none; }
+  .info-key { color: var(--muted); font-weight: 600; font-size: 12px; }
+  .info-val { font-family: var(--mono); font-size: 12px; }
+  .info-val.green { color: var(--accent); }
+  .info-val.yellow { color: var(--yellow); }
+
+  /* ── REFRESH BTN ── */
+  .refresh-btn {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border2);
+    color: var(--muted); font-family: var(--sans); font-size: 12px; font-weight: 600;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .refresh-btn.spinning svg { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  /* ── EMPTY STATE ── */
+  .empty {
+    text-align: center; padding: 32px;
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 16px 40px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+
+  footer span { color: var(--accent); }
+
+  /* ── ERROR BANNER ── */
+  .error-banner {
+    display: none;
+    background: rgba(255,77,77,0.08);
+    border: 1px solid rgba(255,77,77,0.2);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    font-family: var(--mono); font-size: 12px; color: var(--red);
+    margin: 16px 32px 0;
+  }
+
+  .error-banner.visible { display: block; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="logo" href="#">
+    <div class="logo-mark">T</div>
+    Tempo Metrics
+  </a>
+  <div class="nav-right">
+    <div class="status-pill">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Connecting…</span>
+    </div>
+    <button class="refresh-btn" id="refresh-btn" onclick="fetchAll()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Refresh
+    </button>
+    <div class="last-update" id="last-update">—</div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-eyebrow">Live Network Data</div>
+  <h1>Tempo <span>Network</span> Metrics</h1>
+  <p class="hero-sub">Real-time stats from Tempo Moderato Testnet · Chain ID 42431</p>
+</div>
+
+<div class="error-banner" id="error-banner">
+  ⚠ Could not connect to Tempo RPC. Make sure you're on a supported browser and the network is reachable.
+</div>
+
+<!-- TOP METRICS -->
+<div class="metrics-grid">
+  <div class="metric-card green">
+    <div class="metric-label">
+      Latest Block
+      <span class="metric-icon">⛓</span>
+    </div>
+    <div class="metric-value green loading" id="m-block">000000</div>
+    <div class="metric-sub" id="m-block-time">fetching…</div>
+  </div>
+  <div class="metric-card yellow">
+    <div class="metric-label">
+      TPS (last block)
+      <span class="metric-icon">⚡</span>
+    </div>
+    <div class="metric-value yellow loading" id="m-tps">0.00</div>
+    <div class="metric-sub">transactions / sec</div>
+  </div>
+  <div class="metric-card blue">
+    <div class="metric-label">
+      Txs (last block)
+      <span class="metric-icon">📊</span>
+    </div>
+    <div class="metric-value blue loading" id="m-txcount">0</div>
+    <div class="metric-sub" id="m-txcount-sub">in latest block</div>
+  </div>
+  <div class="metric-card purple">
+    <div class="metric-label">
+      Gas Price
+      <span class="metric-icon">⛽</span>
+    </div>
+    <div class="metric-value purple loading" id="m-gas">0</div>
+    <div class="metric-sub">gwei</div>
+  </div>
+</div>
+
+<!-- TEMPO-SPECIFIC METRICS -->
+<div class="metrics-grid" style="border-top:1px solid var(--border)">
+  <div class="metric-card green">
+    <div class="metric-label">
+      Sponsored Txs
+      <span class="metric-icon">🎁</span>
+    </div>
+    <div class="metric-value green loading" id="m-sponsored">0</div>
+    <div class="metric-sub" id="m-sponsored-pct">of last 20 blocks</div>
+  </div>
+  <div class="metric-card yellow">
+    <div class="metric-label">
+      TempoTx (0x76)
+      <span class="metric-icon">⚡</span>
+    </div>
+    <div class="metric-value yellow loading" id="m-tempotx">0</div>
+    <div class="metric-sub">Tempo-native tx type</div>
+  </div>
+  <div class="metric-card blue">
+    <div class="metric-label">
+      TIP-20 Transfers
+      <span class="metric-icon">💸</span>
+    </div>
+    <div class="metric-value blue loading" id="m-tip20">0</div>
+    <div class="metric-sub">stablecoin transfers</div>
+  </div>
+  <div class="metric-card purple">
+    <div class="metric-label">
+      Unique Senders
+      <span class="metric-icon">👤</span>
+    </div>
+    <div class="metric-value purple loading" id="m-senders">0</div>
+    <div class="metric-sub">last 20 blocks</div>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="content">
+
+  <!-- RECENT BLOCKS -->
+  <div class="panel">
+    <div class="panel-title">Recent Blocks</div>
+    <div class="block-list" id="block-list">
+      <div class="empty">Loading blocks…</div>
+    </div>
+  </div>
+
+  <!-- RECENT TXs -->
+  <div class="panel">
+    <div class="panel-title">Recent Transactions</div>
+    <div class="block-list" id="tx-list">
+      <div class="empty">Loading transactions…</div>
+    </div>
+  </div>
+
+  <!-- TX HISTORY CHART -->
+  <div class="panel">
+    <div class="panel-title">Tx Count — Last 20 Blocks</div>
+    <div class="chart-wrap" id="chart"></div>
+    <div class="chart-labels" id="chart-labels"></div>
+  </div>
+
+  <!-- NETWORK INFO -->
+  <div class="panel">
+    <div class="panel-title">Network Info</div>
+    <div class="info-row">
+      <span class="info-key">Network</span>
+      <span class="info-val green">Tempo Moderato</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Chain ID</span>
+      <span class="info-val">42431</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">RPC</span>
+      <span class="info-val" style="font-size:10px">rpc.moderato.tempo.xyz</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Consensus</span>
+      <span class="info-val green">Simplex</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Avg Block Time</span>
+      <span class="info-val" id="ni-blocktime">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Status</span>
+      <span class="info-val green" id="ni-status">Connecting…</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Total Blocks Fetched</span>
+      <span class="info-val" id="ni-total">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Explorer</span>
+      <span class="info-val">
+        <a href="https://explorer.moderato.tempo.xyz" target="_blank" style="color:var(--accent);text-decoration:none">explorer.moderato.tempo.xyz ↗</a>
+      </span>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>Tempo Metrics</span> — built on Tempo Moderato Testnet
+  <a href="https://docs.tempo.xyz" target="_blank" style="color:var(--muted);text-decoration:none">docs.tempo.xyz ↗</a>
+</footer>
+
+<script>
+  const RPC = 'https://rpc.moderato.tempo.xyz';
+  const EXPLORER = 'https://explorer.moderato.tempo.xyz';
+
+  let blockHistory = [];
+  let autoRefresh = null;
+
+  // ── RPC HELPER ──
+  async function rpc(method, params = []) {
+    const res = await fetch(RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.result;
+  }
+
+  function hexToNum(hex) { return parseInt(hex, 16); }
+  function shortHash(h) { return h ? h.slice(0,8) + '…' + h.slice(-6) : '—'; }
+  function timeAgo(ts) {
+    const diff = Math.floor(Date.now() / 1000) - ts;
+    if (diff < 5) return 'just now';
+    if (diff < 60) return diff + 's ago';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    return Math.floor(diff/3600) + 'h ago';
+  }
+
+  // ── SET STATUS ──
+  function setStatus(state) {
+    const dot = document.getElementById('status-dot');
+    const txt = document.getElementById('status-text');
+    const ni  = document.getElementById('ni-status');
+    if (state === 'live') {
+      dot.className = 'status-dot live';
+      txt.textContent = 'Live'; ni.textContent = '✓ Online'; ni.style.color = 'var(--accent)';
+    } else if (state === 'error') {
+      dot.className = 'status-dot error';
+      txt.textContent = 'Error'; ni.textContent = '✗ Offline'; ni.style.color = 'var(--red)';
+      document.getElementById('error-banner').classList.add('visible');
+    } else {
+      dot.className = 'status-dot';
+      txt.textContent = 'Connecting…';
+    }
+  }
+
+  // ── REMOVE LOADING ──
+  function setVal(id, val) {
+    const el = document.getElementById(id);
+    el.classList.remove('loading');
+    el.textContent = val;
+  }
+
+  // ── FETCH BLOCK ──
+  async function fetchBlock(numHex) {
+    return await rpc('eth_getBlockByNumber', [numHex, true]);
+  }
+
+  // ── RENDER BLOCKS ──
+  function renderBlocks(blocks) {
+    const list = document.getElementById('block-list');
+    list.innerHTML = '';
+    blocks.slice(0, 8).forEach(b => {
+      const ts = hexToNum(b.timestamp);
+      const txCount = b.transactions.length;
+      const div = document.createElement('div');
+      div.className = 'block-row';
+      div.innerHTML = `
+        <div>
+          <div class="block-num">#${hexToNum(b.number).toLocaleString()}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px">${shortHash(b.hash)}</div>
+        </div>
+        <div class="block-txs">${txCount} tx${txCount !== 1 ? 's' : ''}</div>
+        <div class="block-meta">
+          <span>${timeAgo(ts)}</span>
+          <span>${new Date(ts * 1000).toLocaleTimeString()}</span>
+        </div>
+      `;
+      list.appendChild(div);
+    });
+  }
+
+  // ── RENDER TXs ──
+  function renderTxs(blocks) { renderTxsTempo(blocks); }
+
+  function getTxType(tx) {
+    const txType = tx.type ? parseInt(tx.type, 16) : 0;
+    if (txType === 0x76) {
+      const isSponsored = tx.input && tx.input.length > 2;
+      return isSponsored ? 'sponsored' : 'tempotx';
+    }
+    if (!tx.to) return 'contract';
+    if (tx.input && tx.input.startsWith('0xa9059cbb')) return 'tip20';
+    if (tx.input === '0x') return 'transfer';
+    return 'other';
+  }
+
+  function renderTxsTempo(blocks) {
+    const list = document.getElementById('tx-list');
+    list.innerHTML = '';
+    const txs = [];
+    blocks.forEach(b => {
+      b.transactions.forEach(tx => txs.push({ tx, ts: hexToNum(b.timestamp) }));
+    });
+    if (txs.length === 0) {
+      list.innerHTML = '<div class="empty">No transactions in recent blocks</div>';
+      return;
+    }
+    txs.slice(0, 8).forEach(({ tx, ts }) => {
+      const type = getTxType(tx);
+      const typeColors = {
+        sponsored: 'background:rgba(0,229,160,0.15);color:var(--accent);border:1px solid rgba(0,229,160,0.3)',
+        tempotx:   'background:rgba(255,209,102,0.12);color:var(--yellow);border:1px solid rgba(255,209,102,0.25)',
+        tip20:     'background:rgba(77,159,255,0.12);color:var(--blue);border:1px solid rgba(77,159,255,0.25)',
+        contract:  'background:rgba(167,139,250,0.12);color:var(--purple);border:1px solid rgba(167,139,250,0.25)',
+        transfer:  'background:var(--surface2);color:var(--muted);border:1px solid var(--border2)',
+        other:     'background:var(--surface2);color:var(--muted);border:1px solid var(--border2)',
+      };
+      const div = document.createElement('div');
+      div.className = 'tx-row';
+      div.innerHTML = `
+        <div>
+          <div class="tx-hash">
+            <a href="${EXPLORER}/tx/${tx.hash}" target="_blank" style="color:var(--accent);text-decoration:none">${shortHash(tx.hash)}</a>
+          </div>
+          <div style="margin-top:4px">
+            <span class="tx-type" style="${typeColors[type]||typeColors.other}">${type}</span>
+          </div>
+        </div>
+        <div class="tx-meta">
+          <span>${timeAgo(ts)}</span>
+          <span>${tx.to ? shortHash(tx.to) : 'deploy'}</span>
+        </div>
+      `;
+      list.appendChild(div);
+    });
+  }
+
+  // ── RENDER CHART ──
+  function renderChart(blocks) {
+    const chart = document.getElementById('chart');
+    const labels = document.getElementById('chart-labels');
+    chart.innerHTML = '';
+    labels.innerHTML = '';
+    const max = Math.max(...blocks.map(b => b.transactions.length), 1);
+    blocks.forEach((b, i) => {
+      const count = b.transactions.length;
+      const pct = (count / max) * 100;
+      const bar = document.createElement('div');
+      bar.className = 'bar' + (i === blocks.length - 1 ? ' active' : '');
+      bar.style.height = Math.max(pct, 3) + '%';
+      bar.title = `Block #${hexToNum(b.number)}: ${count} txs`;
+      chart.appendChild(bar);
+    });
+    const step = Math.floor(blocks.length / 4);
+    [0, step, step*2, step*3, blocks.length-1].forEach(i => {
+      if (blocks[i]) {
+        const lbl = document.createElement('span');
+        lbl.textContent = '#' + (hexToNum(blocks[i].number) % 1000);
+        labels.appendChild(lbl);
+      }
+    });
+  }
+
+  // ── MAIN FETCH ──
+  async function fetchAll() {
+    const btn = document.getElementById('refresh-btn');
+    btn.classList.add('spinning');
+    document.getElementById('error-banner').classList.remove('visible');
+
+    try {
+      // Latest block number
+      const latestHex = await rpc('eth_blockNumber');
+      const latestNum = hexToNum(latestHex);
+
+      // Fetch last 20 blocks in parallel
+      const nums = Array.from({ length: 20 }, (_, i) => latestNum - i).filter(n => n >= 0);
+      const blocks = await Promise.all(nums.map(n => fetchBlock('0x' + n.toString(16))));
+      const validBlocks = blocks.filter(Boolean).reverse();
+
+      // Latest block stats
+      const latest = validBlocks[validBlocks.length - 1];
+      const prev   = validBlocks[validBlocks.length - 2];
+
+      const latestTs = hexToNum(latest.timestamp);
+      const prevTs   = prev ? hexToNum(prev.timestamp) : latestTs - 1;
+      const blockTime = latestTs - prevTs || 1;
+      const txCount = latest.transactions.length;
+      const tps = (txCount / blockTime).toFixed(2);
+
+      // Gas price
+      const gasPriceHex = await rpc('eth_gasPrice');
+      const gasGwei = (hexToNum(gasPriceHex) / 1e9).toFixed(4);
+
+      // Avg block time
+      const first = validBlocks[0];
+      const avgBlockTime = validBlocks.length > 1
+        ? ((latestTs - hexToNum(first.timestamp)) / (validBlocks.length - 1)).toFixed(2)
+        : '—';
+
+      // Update UI
+      setVal('m-block', latestNum.toLocaleString());
+      setVal('m-tps', tps);
+      setVal('m-txcount', txCount.toString());
+      setVal('m-gas', gasGwei);
+
+      document.getElementById('m-block-time').textContent = timeAgo(latestTs);
+      document.getElementById('m-txcount-sub').textContent = `block time: ~${blockTime}s`;
+      document.getElementById('ni-blocktime').textContent = avgBlockTime + 's avg';
+      document.getElementById('ni-total').textContent = validBlocks.length + ' blocks loaded';
+      document.getElementById('last-update').textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+      renderBlocks([...validBlocks].reverse());
+      renderTxs([...validBlocks].reverse());
+      renderChart(validBlocks);
+
+      // ── TEMPO-SPECIFIC METRICS ──
+      const allTxs = validBlocks.flatMap(b => b.transactions);
+
+      // Sponsored tx: TempoTransaction (type 0x76) with feePayer field
+      // 0x76 = 118 decimal — Tempo's custom EIP-2718 tx type
+      const tempoTxs = allTxs.filter(tx => {
+        const txType = tx.type ? parseInt(tx.type, 16) : 0;
+        return txType === 0x76;
+      });
+
+      // Sponsored = has a feePayer (input starts with specific selector or type is 0x76 with extra fields)
+      // Since RPC may not expose feePayer directly, we detect by tx type + non-empty input
+      const sponsoredTxs = tempoTxs.filter(tx => tx.input && tx.input.length > 2);
+
+      // TIP-20 transfers: ERC-20/TIP-20 transfer() calls
+      // transfer(address,uint256) selector = 0xa9059cbb
+      const tip20Transfers = allTxs.filter(tx =>
+        tx.input && tx.input.startsWith('0xa9059cbb')
+      );
+
+      // Unique senders
+      const uniqueSenders = new Set(allTxs.map(tx => tx.from)).size;
+
+      const sponsoredPct = allTxs.length > 0
+        ? ((sponsoredTxs.length / allTxs.length) * 100).toFixed(1)
+        : '0';
+
+      setVal('m-sponsored', sponsoredTxs.length.toString());
+      setVal('m-tempotx', tempoTxs.length.toString());
+      setVal('m-tip20', tip20Transfers.length.toString());
+      setVal('m-senders', uniqueSenders.toString());
+
+      document.getElementById('m-sponsored-pct').textContent =
+        sponsoredPct + '% of all txs';
+
+      // Update tx list to show Tempo-specific types
+      renderTxsTempo([...validBlocks].reverse());
+
+      setStatus('live');
+
+    } catch (err) {
+      console.error('Tempo RPC error:', err);
+      setStatus('error');
+      document.getElementById('last-update').textContent = 'Failed ' + new Date().toLocaleTimeString();
+    }
+
+    btn.classList.remove('spinning');
+  }
+
+  // ── AUTO REFRESH every 5s ──
+  fetchAll();
+  autoRefresh = setInterval(fetchAll, 5000);
+</script>
+</body>
+</html>
